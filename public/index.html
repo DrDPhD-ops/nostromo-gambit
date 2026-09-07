@@ -1,0 +1,207 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>NOSTROMO GAMBIT</title>
+    <link rel="stylesheet" href="/theme.css" />
+    <link
+      rel="icon"
+      href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><rect width='16' height='16' fill='%23050a06'/><rect x='6' y='3' width='4' height='4' fill='%237dff9b'/><rect x='4' y='8' width='8' height='5' fill='%237dff9b'/></svg>"
+    />
+  </head>
+  <body>
+    <div class="app">
+      <header class="head">
+        <span class="title">NOSTROMO GAMBIT</span>
+        <span class="status" id="turn-line">ЗАГРУЗКА…</span>
+        <span class="spacer"></span>
+        <span class="status" id="hold-line"></span>
+        <span class="status"><span class="link-dot" id="link-dot"></span><span id="link-text">СВЯЗЬ</span></span>
+        <button id="btn-settings" title="Настройки">⚙ НАСТРОЙКИ</button>
+      </header>
+
+      <div class="evalbar" id="evalbar" title="Тактический баланс: зелёное — доля морпехов, янтарное — доля ксено">
+        <span class="label" id="eval-label">0.00</span>
+        <div class="fill" id="eval-fill"></div>
+      </div>
+
+      <div class="board-wrap">
+        <div class="board" id="board">
+          <div class="squares" id="squares"></div>
+          <div class="pieces" id="pieces"></div>
+          <div class="drop-banner" id="drop-banner">
+            <div class="head-line">◆ ОРБИТАЛЬНЫЙ ДЕСАНТ</div>
+            <div class="phase" id="drop-phase">ЗАПРОС ТРАЕКТОРИЙ…</div>
+            <div class="bar"><i id="drop-bar"></i></div>
+          </div>
+        </div>
+      </div>
+
+      <aside class="side">
+        <section class="panel grow">
+          <h2>ЖУРНАЛ ХОДОВ</h2>
+          <div class="body moves" id="moves"></div>
+        </section>
+        <section class="panel grow">
+          <h2>ЖУРНАЛ ВЫСАДКИ</h2>
+          <div class="body" id="drops">
+            <div style="color: var(--phosphor-faint)">Высадок ещё не было.</div>
+          </div>
+        </section>
+      </aside>
+
+      <footer class="foot">
+        <div class="dice-box">
+          <button id="roll-w" class="amber">⚀⚁ БРОСОК · МОРПЕХИ</button>
+          <span class="pips" id="pips-w">●●●</span>
+        </div>
+        <div class="dice-box">
+          <div class="die" id="die1"></div>
+          <div class="die" id="die2"></div>
+          <span class="dice-text" id="dice-text"></span>
+        </div>
+        <span class="spacer"></span>
+        <span class="status" id="auto-line"></span>
+        <span class="spacer"></span>
+        <div class="dice-box">
+          <span class="pips" id="pips-b">●●●</span>
+          <button id="roll-b" class="amber">БРОСОК · КСЕНО ⚀⚁</button>
+        </div>
+        <button id="btn-undo">↶ ОТМЕНА</button>
+        <button id="btn-new">НОВАЯ ПАРТИЯ</button>
+      </footer>
+    </div>
+
+    <div class="overlay" id="overlay">
+      <div class="card">
+        <h3 id="over-title">МАТ</h3>
+        <p id="over-sub"></p>
+        <button id="over-new">НОВАЯ ПАРТИЯ</button>
+        <button id="over-close">ПОСМОТРЕТЬ ПАРТИЮ</button>
+      </div>
+    </div>
+
+    <div class="overlay" id="promo">
+      <div class="card">
+        <h3>ПРЕВРАЩЕНИЕ</h3>
+        <p>Во что превратить пешку?</p>
+        <div>
+          <button data-promo="q">ФЕРЗЬ</button>
+          <button data-promo="r">ЛАДЬЯ</button>
+          <button data-promo="b">СЛОН</button>
+          <button data-promo="n">КОНЬ</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="drawer" id="drawer">
+      <h3>НАСТРОЙКИ</h3>
+
+      <label for="set-teller">ПЛАНИРОВЩИК</label>
+      <select id="set-teller"></select>
+      <div class="teller-blurb" id="teller-blurb"></div>
+
+      <label for="set-auto">АВТО-ДЕСАНТ КАЖДЫЕ N ХОДОВ (0 — выключен)</label>
+      <input type="number" id="set-auto" min="0" max="20" />
+      <div class="hint">Пусто — взять из профиля планировщика.</div>
+
+      <label for="set-rolls">БРОСКОВ НА ИГРОКА</label>
+      <input type="number" id="set-rolls" min="0" max="9" />
+
+      <label for="set-tol">ДОПУСК ПО ОЦЕНКЕ, СП (пусто — из профиля)</label>
+      <input type="number" id="set-tol" min="5" max="120" />
+
+      <label for="set-pieces">НАБОР ФИГУР</label>
+      <select id="set-pieces">
+        <option value="xeno">МОРПЕХИ ПРОТИВ КСЕНО</option>
+        <option value="classic">КЛАССИЧЕСКИЕ ПИКСЕЛЬНЫЕ</option>
+      </select>
+
+      <div class="row-check">
+        <input type="checkbox" id="set-badges" /><label for="set-badges" style="margin: 0">Буквы фигур в углу поля</label>
+      </div>
+      <div class="row-check">
+        <input type="checkbox" id="set-eval" /><label for="set-eval" style="margin: 0">Показывать шкалу оценки</label>
+      </div>
+      <div class="row-check">
+        <input type="checkbox" id="set-check" /><label for="set-check" style="margin: 0">Запретить десанту ставить шах</label>
+      </div>
+
+      <div class="hint" style="margin-top: 18px">
+        Десант не может превысить шахматный максимум в 32 фигуры: партия начинается
+        ровно с 32, поэтому подкрепление приходит только после потерь.
+      </div>
+
+      <div style="margin-top: 18px"><button id="drawer-close">ЗАКРЫТЬ</button></div>
+    </div>
+
+    <div class="start" id="start">
+      <div class="start-card">
+        <div class="boot" id="boot"></div>
+
+        <div class="start-title">NOSTROMO GAMBIT</div>
+        <div class="start-sub">ШАХМАТЫ С ОРБИТАЛЬНЫМ ДЕСАНТОМ · ТАКТИЧЕСКИЙ МОДУЛЬ</div>
+
+        <div class="opt">
+          <span class="opt-label">ИГРОК 1 · МОРПЕХИ</span>
+          <div class="seg" data-opt="pw">
+            <button data-val="human" class="on">ЧЕЛОВЕК</button><button data-val="computer">КОМПЬЮТЕР</button>
+          </div>
+        </div>
+
+        <div class="opt">
+          <span class="opt-label">ИГРОК 2 · КСЕНО</span>
+          <div class="seg" data-opt="pb">
+            <button data-val="human" class="on">ЧЕЛОВЕК</button><button data-val="computer">КОМПЬЮТЕР</button>
+          </div>
+        </div>
+
+        <div class="opt" id="opt-level">
+          <span class="opt-label">УРОВЕНЬ КОМПЬЮТЕРА</span>
+          <div class="seg" data-opt="level" id="seg-level"></div>
+        </div>
+        <div class="opt-note" id="level-note"></div>
+
+        <div class="opt">
+          <span class="opt-label">ПЛАНИРОВЩИК ДЕСАНТА</span>
+          <div class="seg" data-opt="teller" id="seg-teller"></div>
+        </div>
+        <div class="opt-note" id="start-teller-note"></div>
+
+        <div class="opt">
+          <span class="opt-label">РАССТАНОВКА</span>
+          <div class="seg" data-opt="start">
+            <button data-val="standard" class="on">СТАНДАРТНАЯ</button><button data-val="fischer">ФИШЕРА</button>
+          </div>
+        </div>
+        <div class="opt-note" id="fischer-note"></div>
+
+        <div class="opt">
+          <span class="opt-label">БРОСКОВ КУБИКОВ НА ИГРОКА</span>
+          <div class="seg" data-opt="rolls">
+            <button data-val="0">0</button><button data-val="2">2</button><button data-val="3" class="on">3</button
+            ><button data-val="5">5</button>
+          </div>
+        </div>
+
+        <div class="opt">
+          <span class="opt-label">АВТО-ДЕСАНТ, КАЖДЫЕ N ХОДОВ</span>
+          <div class="seg" data-opt="auto">
+            <button data-val="0">ВЫКЛ</button><button data-val="3">3</button><button data-val="4">4</button
+            ><button data-val="6">6</button><button data-val="" class="on">ПРОФИЛЬ</button>
+          </div>
+        </div>
+
+        <div class="start-go"><button id="start-go">▶ НАЧАТЬ ОПЕРАЦИЮ</button></div>
+        <div class="opt-note" style="text-align: center">
+          Десант приходит только после потерь: в шахматах не бывает больше 32 фигур.
+        </div>
+      </div>
+    </div>
+
+    <div class="toast" id="toast"></div>
+
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>

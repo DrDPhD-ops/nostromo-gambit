@@ -152,11 +152,16 @@ export function samplePackage(rng, { fen, budgetCp = 400, ledgerCp = 0, limits =
 export function repairPackage(pkg, side, { fen, limits = LIMITS } = {}) {
   const other = side === 'w' ? 'b' : 'w';
 
-  // Вариант 1: добавить пешку недобирающей стороне.
-  const withPawn = { ...pkg, w: [...pkg.w], b: [...pkg.b] };
-  withPawn[side] = [...withPawn[side], 'p'];
-  if (!fen || packageFits(fen, withPawn, limits)) {
-    return { ...withPawn, id: `${pkg.id}+p${side}`, tonnage: tonnageOf(withPawn), delta: nominalDelta(withPawn) };
+  // Вариант 1: добавить недобирающей стороне лёгкую фигуру.
+  // Пешка — первый выбор, но она не всегда влезает: у стороны может быть все восемь,
+  // и тогда девятая делает позицию недостижимой. Раньше на этом ступень лестницы
+  // просто пропадала, поэтому перебираем варианты по возрастанию веса.
+  for (const type of ['p', 'n', 'b', 'r']) {
+    const grown = { ...pkg, w: [...pkg.w], b: [...pkg.b] };
+    grown[side] = [...grown[side], type];
+    if (!fen || packageFits(fen, grown, limits)) {
+      return { ...grown, id: `${pkg.id}+${type}${side}`, tonnage: tonnageOf(grown), delta: nominalDelta(grown) };
+    }
   }
 
   // Вариант 2: разменять коня противоположной стороны на три пешки — тот же тоннаж,
