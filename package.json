@@ -16,7 +16,8 @@
     "selfplay": "node scripts/selfplay.mjs",
     "audit": "node scripts/audit-drops.mjs",
     "e2e": "node test/e2e/serve-for-e2e.mjs",
-    "mirror": "node scripts/mirror-to-drive.mjs"
+    "mirror": "node scripts/mirror-to-drive.mjs",
+    "bench": "node scripts/bench-drops.mjs"
   },
   "dependencies": {
     "chess.js": "1.4.0"

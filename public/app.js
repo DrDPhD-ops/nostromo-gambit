@@ -605,4 +605,16 @@ drawDie(el.die1, 1);
 drawDie(el.die2, 1);
 await refresh();
 connect();
-openStartScreen();
+
+// Экран выбора показывается только когда играть ещё нечего.
+// Перезагрузка посреди партии не должна накрывать живую доску: состояние живёт
+// на сервере и никуда не делось, а единственная кнопка того экрана начала бы
+// новую партию и стёрла бы позицию.
+const gameInProgress = state && (state.moveLog.length > 0 || state.dropLog.length > 0);
+if (gameInProgress) {
+  buildStartOptions(state);
+  startEl.classList.add('off');
+  toast('ПАРТИЯ ВОССТАНОВЛЕНА');
+} else {
+  openStartScreen();
+}
