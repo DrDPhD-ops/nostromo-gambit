@@ -126,3 +126,31 @@ test('корректный десант проходит все проверки
   assert.equal(chess.get('a5').color, 'b');
   assert.ok(chess.moves().length > 0);
 });
+
+test('настройка «разрешить шах» действительно что-то меняет', () => {
+  // Белая ладья на g5 бьёт чёрного короля g8. Ход ЧЁРНЫХ — значит это шах
+  // стороне к ходу, то есть ровно тот случай, которым управляет настройка.
+  const fen = '6k1/8/8/8/8/8/8/4K3 b - - 0 1';
+  const placement = place('g5', 'w', 'r');
+
+  const forbidden = validatePlacement(fen, placement, { forbidCheck: true });
+  assert.equal(forbidden.ok, false, 'при запрете шаха расстановка обязана отвергаться');
+  assert.ok(forbidden.problems.some((p) => p.includes('шах')));
+
+  const allowed = validatePlacement(fen, placement, { forbidCheck: false });
+  assert.equal(
+    allowed.ok,
+    true,
+    `при разрешённом шахе расстановка обязана проходить, получили: ${allowed.problems.join('; ')}`,
+  );
+});
+
+test('шах стороне НЕ к ходу запрещён независимо от настройки', () => {
+  // Тот же десант, но ходят белые: теперь под боем оказывается король чёрных,
+  // которые не ходят, а такой позиции не существует ни при каких настройках.
+  const fen = '6k1/8/8/8/8/8/8/4K3 w - - 0 1';
+  for (const forbidCheck of [true, false]) {
+    const r = validatePlacement(fen, place('g5', 'w', 'r'), { forbidCheck });
+    assert.equal(r.ok, false, `forbidCheck=${forbidCheck}: позиция нелегальна в любом случае`);
+  }
+});

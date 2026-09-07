@@ -320,6 +320,9 @@ const PHASE_TEXT = {
 
 function showBanner(on) {
   el.banner.classList.toggle('on', on);
+  // Текст фазы сбрасывается при скрытии: иначе следующая высадка на мгновение
+  // показывает прошлую строку, пока не придёт первое событие прогресса.
+  if (!on) el.bannerPhase.textContent = PHASE_TEXT.baseline;
   if (on) {
     el.bannerBar.style.width = '0%';
     el.bannerPhase.textContent = PHASE_TEXT.baseline;

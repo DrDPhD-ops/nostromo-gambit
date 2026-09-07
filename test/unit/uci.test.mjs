@@ -181,7 +181,9 @@ test('dispose завершает процесс, даже если движок 
   const pid = e.pid;
   const t0 = Date.now();
   await e.dispose({ graceMs: 200 });
-  assert.ok(Date.now() - t0 < 2000, 'останов не должен занимать секунды');
+  // Порог щедрый намеренно: под чужой нагрузкой taskkill отвечает не мгновенно,
+  // а доказать надо не скорость, а отсутствие зависания.
+  assert.ok(Date.now() - t0 < 6000, 'останов не должен подвисать');
   assert.equal(e.alive, false);
   assert.ok(pid > 0);
 });

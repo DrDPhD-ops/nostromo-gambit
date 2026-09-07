@@ -227,13 +227,17 @@ export function validatePlacement(fen, placements, opts = {}) {
     problems.push('после десанта у стороны к ходу не осталось ходов');
   }
 
-  // 6. Ни одна десантируемая фигура не атакует короля.
+  // 6. Атака десантируемой фигуры на короля стороны, которая НЕ ходит.
+  //
+  // Проверка 3 выше ловит тот же случай через isAttacked и потому шире, но эта
+  // называет конкретное поле — по такому сообщению видно, что именно сломалось.
+  // Шах стороне К ХОДУ здесь НЕ проверяется: за него отвечает проверка 4, и
+  // дублировать её нельзя — тогда настройка forbidCheck перестаёт что-либо решать,
+  // потому что отключение одной из двух одинаковых проверок ничего не меняет.
   for (const p of placements) {
     const sq = typeof p.square === 'number' ? squareName(p.square) : p.square;
-    for (const king of [wk, bk]) {
-      if (king && chess.attackers(king, p.color).includes(sq)) {
-        problems.push(`десантируемая фигура на ${sq} атакует короля`);
-      }
+    if (waitingKing && chess.attackers(waitingKing, p.color).includes(sq)) {
+      problems.push(`десантируемая фигура на ${sq} атакует короля стороны не к ходу`);
     }
   }
 

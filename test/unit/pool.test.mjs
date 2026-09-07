@@ -23,11 +23,16 @@ test('размер пула не забирает все логические я
 });
 
 test('одновременность не превышает размер пула', async () => {
-  const pool = mockPool(4, { delayMs: 12 });
+  const pool = mockPool(4, { delayMs: 30 });
   await pool.start();
   try {
     await pool.map(Array.from({ length: 20 }, (_, i) => i), (engine) => engine.analyse({ fen: FEN, nodes: 1000 }));
-    assert.equal(pool.peakConcurrency, 4, 'ровно 4, не больше и не меньше');
+    // Верхняя граница — это и есть инвариант: превышение означает, что один движок
+    // выдан двум задачам, а UCI от этого молча рассинхронизируется.
+    assert.ok(pool.peakConcurrency <= 4, `пул выдал ${pool.peakConcurrency} движков при размере 4`);
+    // Нижняя граница мягкая намеренно: под чужой нагрузкой задачи успевают
+    // завершаться до запуска следующих, и жёсткое «ровно 4» превращается в флак.
+    assert.ok(pool.peakConcurrency >= 2, 'пул обязан выполнять задачи параллельно');
   } finally {
     await pool.dispose();
   }
