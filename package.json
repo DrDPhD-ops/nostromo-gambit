@@ -1,0 +1,24 @@
+{
+  "name": "nostromo-gambit",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Шахматы с орбитальным десантом: Stockfish как арбитр баланса, а не соперник",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "setup": "node scripts/get-stockfish.mjs",
+    "start": "node src/server/main.mjs",
+    "test": "node --test \"test/unit/*.test.mjs\" \"test/integration/*.test.mjs\"",
+    "test:unit": "node --test \"test/unit/*.test.mjs\"",
+    "test:real": "node --test \"test/integration/*.test.mjs\"",
+    "selfplay": "node scripts/selfplay.mjs",
+    "audit": "node scripts/audit-drops.mjs",
+    "e2e": "node test/e2e/serve-for-e2e.mjs",
+    "mirror": "node scripts/mirror-to-drive.mjs"
+  },
+  "dependencies": {
+    "chess.js": "1.4.0"
+  }
+}
