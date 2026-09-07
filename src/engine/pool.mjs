@@ -29,6 +29,7 @@ class Slot {
     this.failures = [];
     this.disabled = false;
     this.starting = null;
+    this.respawnPending = false;
     // Занятость держит САМ пул, а не движок.
     // Полагаться на engine.busy нельзя: он поднимается только внутри вызова движка,
     // поэтому задача, которая делает что-то ещё (пауза, несколько последовательных
@@ -129,8 +130,12 @@ export class EnginePool extends EventEmitter {
       this.#pump();
       return;
     }
+    // Флаг держим на всё окно ожидания: без него между смертью и перезапуском
+    // очередь выглядит безнадёжной и её отвергают преждевременно.
+    slot.respawnPending = true;
     setTimeout(async () => {
       await this.#spawnSlot(slot);
+      slot.respawnPending = false;
       this.emit('health', { healthy: this.healthy, live: this.liveCount });
       this.#pump();
     }, BACKOFF_MS[attempt]);
@@ -178,11 +183,59 @@ export class EnginePool extends EventEmitter {
     if (this.#disposed) return;
     while (this.#queue.length > 0) {
       const slot = this.#slots.find((s) => s.available);
-      if (!slot) return;
+      if (!slot) {
+        // Ждать освобождения имеет смысл, только если есть кому освободиться.
+        // Если все слоты мертвы или выключены автоматом защиты, очередь будет
+        // ждать вечно, и вызывающий повиснет на await без единой ошибки.
+        this.#failQueueIfHopeless();
+        return;
+      }
       const job = this.#queue.shift();
       if (!job || job.cancelled) continue;
       this.#execute(slot, job);
     }
+  }
+
+  /** Есть ли слот, который сейчас работает или ещё может ожить. */
+  #anyHope() {
+    return this.#slots.some(
+      (s) => !s.disabled && (s.busy || s.starting || s.respawnPending || (s.engine && s.engine.alive)),
+    );
+  }
+
+  /**
+   * Пробуем вернуть в строй слоты, выключенные автоматом защиты, если окно
+   * подсчёта падений уже прошло. Без этого одна неудачная пачка задач выключает
+   * пул до конца процесса, и все последующие партии идут без движка.
+   */
+  #tryRevive() {
+    const now = Date.now();
+    let revived = 0;
+    for (const slot of this.#slots) {
+      if (!slot.disabled) continue;
+      const last = slot.failures[slot.failures.length - 1] || 0;
+      if (now - last < BREAKER_WINDOW_MS) continue;
+      slot.disabled = false;
+      slot.failures = [];
+      slot.respawnPending = true;
+      revived += 1;
+      this.#spawnSlot(slot).then(() => {
+        slot.respawnPending = false;
+        this.emit('health', { healthy: this.healthy, live: this.liveCount });
+        this.#pump();
+      });
+    }
+    return revived > 0;
+  }
+
+  #failQueueIfHopeless() {
+    if (this.#anyHope()) return;
+    if (this.#tryRevive()) return;
+    const doomed = this.#queue.splice(0);
+    for (const job of doomed) {
+      job.reject(new EngineError(ERR.CRASHED, 'все движки пула недоступны'));
+    }
+    if (doomed.length > 0) this.emit('health', { healthy: false, live: 0, dropped: doomed.length });
   }
 
   async #execute(slot, job) {
