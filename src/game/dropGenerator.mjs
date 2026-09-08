@@ -327,8 +327,11 @@ export async function generateBalancedDrop(pool, fen, opts = {}) {
       .slice(0, budgets.verifyCandidates);
   }
 
-  /** Отбор + подтверждение для готового списка легальных кандидатов. */
-  /** Ступень 2: отбор. База переизмеряется ТЕМ ЖЕ бюджетом, что и кандидаты. */
+  /**
+   * Ступень 2: отбор. База переизмеряется ТЕМ ЖЕ бюджетом, что и кандидаты —
+   * сравнивать глубокую базу с мелким кандидатом значит вносить систематическую
+   * ошибку больше всего допуска.
+   */
   const runRounds = async (legal, pkg, label, probes = 0) => {
     progress('screen', 0, legal.length);
     const screenBase = await pool.analyse(
