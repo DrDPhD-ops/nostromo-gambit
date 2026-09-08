@@ -10,7 +10,7 @@ import { readJsonSafe, CURRENT_JSON, SELFPLAY_DIR, ensureDirs } from '../src/sha
 import { generateBalancedDrop } from '../src/game/dropGenerator.mjs';
 import { makeRng } from '../src/game/rng.mjs';
 import { buildCorpus } from './corpus.mjs';
-import { freeSlots, countMaterial } from '../src/game/fen.mjs';
+import { countMaterial } from '../src/game/fen.mjs';
 import { UciEngine } from '../src/engine/uci.mjs';
 import { enginePositionProblem } from '../src/game/dropRules.mjs';
 import fs from 'node:fs';

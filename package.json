@@ -17,7 +17,9 @@
     "audit": "node scripts/audit-drops.mjs",
     "e2e": "node test/e2e/serve-for-e2e.mjs",
     "mirror": "node scripts/mirror-to-drive.mjs",
-    "bench": "node scripts/bench-drops.mjs"
+    "bench": "node scripts/bench-drops.mjs",
+    "lint": "node scripts/lint-imports.mjs",
+    "mutants": "node scripts/mutation-check.mjs"
   },
   "dependencies": {
     "chess.js": "1.4.0"

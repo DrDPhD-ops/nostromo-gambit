@@ -11,7 +11,6 @@
 //        --level=1..5 --workers=N --quiet
 import fs from 'node:fs';
 import path from 'node:path';
-import { Chess } from 'chess.js';
 
 import { EnginePool, recommendedPoolSize } from '../src/engine/pool.mjs';
 import { readJsonSafe, CURRENT_JSON, SELFPLAY_DIR, ensureDirs } from '../src/shared/paths.mjs';

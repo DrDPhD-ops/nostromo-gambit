@@ -15,15 +15,7 @@
 //   * бюджет задаётся в УЗЛАХ, а не в глубине: `go depth N` невоспроизводим под нагрузкой;
 //   * базовая оценка ПЕРЕИЗМЕРЯЕТСЯ в каждом раунде тем же бюджетом, что и кандидаты.
 //     Сравнивать глубокую базу с мелким кандидатом — систематическая ошибка больше допуска.
-import { Chess } from 'chess.js';
-import {
-  applyDrop,
-  squareName,
-  emptySquares,
-  mirrorSquare,
-  rankOf,
-  PIECE_VALUE,
-} from './fen.mjs';
+import { squareName, mirrorSquare, rankOf, PIECE_VALUE } from './fen.mjs';
 import { normalizeForComparison } from './fen.mjs';
 import { validatePlacement, deferReason, DEFAULT_DROP_OPTIONS, legalSquaresFor } from './dropRules.mjs';
 import { samplePackage, repairPackage, describePackage, nominalDelta } from './packages.mjs';

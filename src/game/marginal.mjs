@@ -12,7 +12,7 @@
 //
 // Предсказание приблизительно: оно не видит взаимодействий фигур и тактики.
 // Оно и не должно — его работа в том, чтобы дать движку хороший короткий список.
-import { applyDrop, squareName } from './fen.mjs';
+import { applyDrop } from './fen.mjs';
 import { legalSquaresFor, enginePositionProblem } from './dropRules.mjs';
 
 /** Ключ ячейки таблицы. */
@@ -230,14 +230,4 @@ export function pairToPlacements(pair) {
   pair.white.squares.forEach((sq, i) => out.push({ square: sq, color: 'w', type: pair.white.types[i] }));
   pair.black.squares.forEach((sq, i) => out.push({ square: sq, color: 'b', type: pair.black.types[i] }));
   return out;
-}
-
-/** Читаемое описание расстановки для журнала. */
-export function describePlacements(placements) {
-  const side = (color) =>
-    placements
-      .filter((p) => p.color === color)
-      .map((p) => `${p.type.toUpperCase()}${squareName(typeof p.square === 'number' ? p.square : 0)}`)
-      .join(' ');
-  return { w: side('w'), b: side('b') };
 }
