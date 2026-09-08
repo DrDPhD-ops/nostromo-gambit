@@ -25,6 +25,8 @@ const arg = (name, dflt) => {
 
 const NODES = Number(arg('nodes', 3_000_000));
 const LIMIT = Number(arg('limit', 40));
+/** Бюджет, сопоставимый с игровым: им меряется контрольный шум оценки. */
+const SHALLOW = Number(arg('shallow', 300000));
 
 function latestNdjson() {
   const files = fs
@@ -83,15 +85,27 @@ const pool = new EnginePool({
 await pool.start();
 
 const results = [];
+// Контроль: насколько расходятся мелкая и глубокая оценки ОДНОЙ И ТОЙ ЖЕ позиции,
+// без всякого десанта. Это шумовой пол — цифру ошибки десанта не с чем сравнивать,
+// пока не известно, сколько оценка гуляет сама по себе при смене бюджета.
+const noise = [];
 let done = 0;
 
 for (const d of sample) {
   const before = normalizeForComparison(d.fenBefore);
   const after = normalizeForComparison(d.fenAfter);
-  const [a, b] = await Promise.all([
+  const [a, b, shallow] = await Promise.all([
     pool.analyse({ fen: before, nodes: NODES, newGame: true }),
     pool.analyse({ fen: after, nodes: NODES, newGame: true }),
+    pool.analyse({ fen: before, nodes: SHALLOW, newGame: true }),
   ]);
+  // Каждая оценка берётся на СВОЕЙ максимальной глубине: сравниваем именно то,
+  // что каждый бюджет сообщил бы как свой ответ, а не приведённые к общей глубине.
+  const deepSelf = scoreAt(a.curve, a.curve.maxDepth);
+  const shallowSelf = scoreAt(shallow.curve, shallow.curve.maxDepth);
+  if (deepSelf && shallowSelf && !isMate(deepSelf) && !isMate(shallowSelf)) {
+    noise.push(Math.abs(scoreToCp(deepSelf) - scoreToCp(shallowSelf)));
+  }
   const depth = commonDepth([a.curve, b.curve]);
   const e0 = scoreAt(a.curve, depth);
   const e1 = scoreAt(b.curve, depth);
@@ -132,15 +146,38 @@ console.log('ИСТИННАЯ ОШИБКА |Δ − цель|, сп');
 console.log(`  p50=${pct(trueErrors, 0.5)}  p90=${pct(trueErrors, 0.9)}  p99=${pct(trueErrors, 0.99)}  max=${Math.max(...trueErrors)}`);
 console.log(`  пороги плана:  p50 ≤ 20   p90 ≤ 60   p99 ≤ 120\n`);
 
+// Знаковое среднее без оценки разброса интерпретировать нельзя: при большом
+// разбросе и небольшой выборке оно гуляет само по себе. Печатаем две стандартные
+// ошибки, чтобы было видно, отличается ли смещение от нуля или это шум.
+const meanSigned = mean(signed);
+const sd = Math.sqrt(mean(signed.map((x) => (x - meanSigned) ** 2)));
+const twoSe = 2 * (sd / Math.sqrt(Math.max(1, signed.length)));
 console.log('ЗНАКОВОЕ СРЕДНЕЕ (POV белых)');
-console.log(`  ${mean(signed).toFixed(1)} сп   [порог ±5]\n`);
+console.log(`  ${meanSigned.toFixed(1)} ± ${twoSe.toFixed(1)} сп   (n=${signed.length}, порог ±5)`);
+console.log(
+  Math.abs(meanSigned) > twoSe
+    ? '  выходит за две стандартные ошибки — похоже на систематическое смещение\n'
+    : '  в пределах двух стандартных ошибок — от нуля неотличимо\n',
+);
 
 console.log('РАСХОЖДЕНИЕ С ИГРОВЫМ ЗАМЕРОМ |Δ_глубокая − Δ_игровая|, сп');
-console.log(`  p50=${pct(drifts, 0.5)}  p90=${pct(drifts, 0.9)}  max=${Math.max(...drifts)}`);
-console.log('  большое расхождение означает, что игровых бюджетов не хватает\n');
+console.log(`  p50=${pct(drifts, 0.5)}  p90=${pct(drifts, 0.9)}  max=${Math.max(...drifts)}\n`);
 
+console.log('КОНТРОЛЬ: шум самой оценки, без всякого десанта');
+console.log(`  одна и та же позиция на ${(SHALLOW / 1e3).toFixed(0)}k и на ${(NODES / 1e6).toFixed(1)}M узлов`);
+console.log(`  расходится на: p50=${pct(noise, 0.5)}  p90=${pct(noise, 0.9)}  max=${Math.max(...noise)} сп`);
+console.log('  ниже этой величины ошибка десанта опуститься не может в принципе:');
+console.log('  это не качество подбора, а то, насколько оценка зависит от бюджета\n');
+
+console.log('ПО ПЛАНИРОВЩИКАМ (ожидаемый порядок: МАТЬ < БИШОП < ЭШ —');
+console.log(' МАТЬ выбирает устойчивые расстановки, ЭШ намеренно волатильные)');
 const byTeller = {};
-for (const r of results) (byTeller[r.storyteller] ||= []).push(r.trueError);
-for (const [id, errs] of Object.entries(byTeller)) {
-  console.log(`  ${id.padEnd(8)} n=${String(errs.length).padStart(3)}  p50=${pct(errs, 0.5)}  p90=${pct(errs, 0.9)}`);
+for (const r of results) (byTeller[r.storyteller] ||= []).push(r);
+for (const [id, rs] of Object.entries(byTeller)) {
+  const errs = rs.map((r) => r.trueError);
+  const sgn = rs.map((r) => r.trueDelta - r.target);
+  console.log(
+    `  ${id.padEnd(8)} n=${String(rs.length).padStart(3)}  p50=${String(pct(errs, 0.5)).padStart(4)}  ` +
+      `p90=${String(pct(errs, 0.9)).padStart(4)}  знаковое ${mean(sgn).toFixed(1)}`,
+  );
 }

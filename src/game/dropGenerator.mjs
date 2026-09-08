@@ -27,9 +27,9 @@ import { scoreAt, scoreToCp, isMate, commonDepth } from '../engine/evaluate.mjs'
 
 export const DEFAULT_BUDGET = {
   /** На сколько миллисекунд поиска мы вообще замахиваемся. */
-  targetMs: 2200,
+  targetMs: 1700,
   /** Жёсткий предел: за ним десант откладывается, чего бы он ни насчитал. */
-  hardMs: 4200,
+  hardMs: 6500,
   /** Сколько волн отбора прогоняем: кандидатов будет ровно волн × размер пула. */
   screenWaves: 4,
   /** Если скорость пула неизвестна, берём осторожную оценку. */
@@ -156,12 +156,23 @@ export async function generateBalancedDrop(pool, fen, opts = {}) {
 
   const storyteller = getStoryteller(storytellerId);
   const dropOptions = { ...DEFAULT_DROP_OPTIONS, ...dropOptionsIn };
+
+  // Жёсткий предел времени сделан СИГНАЛОМ, а не проверкой между шагами.
+  // Ночной прогон показал одиночные поиски по 28 секунд при пределе 4.2 с:
+  // проверка стояла только на границах попыток, а внутри одной попытки идут
+  // десятки обращений к движку, и на подсевшей машине они растягиваются.
+  // Сигнал обрывает работу в любой точке, включая уже запущенные поиски.
+  const deadline = new AbortController();
+  const deadlineTimer = setTimeout(() => deadline.abort(), budget.hardMs);
+  const abortSignal =
+    signal && AbortSignal.any ? AbortSignal.any([deadline.signal, signal]) : deadline.signal;
+
   const ladder = [];
   const progress = (phase, done, total) => {
     if (onProgress) onProgress({ phase, done, total, elapsedMs: Date.now() - t0 });
   };
 
-  const bail = (reason, extra = {}) => ({
+  const bail = (reason, extra = {}) => (clearTimeout(deadlineTimer), {
     ok: false,
     skipped: true,
     reason,
@@ -190,7 +201,7 @@ export async function generateBalancedDrop(pool, fen, opts = {}) {
   const probeFen = normalizeForComparison(fen);
   const firstLook = await pool.analyse(
     { fen: probeFen, nodes: budgets.screenNodes, newGame: true },
-    { priority: 'urgent', signal },
+    { priority: 'urgent', signal: abortSignal },
   );
   const firstScore = scoreAt(firstLook.curve, firstLook.curve.maxDepth);
   if (isMate(firstScore)) {
@@ -336,7 +347,7 @@ export async function generateBalancedDrop(pool, fen, opts = {}) {
     progress('screen', 0, legal.length);
     const screenBase = await pool.analyse(
       { fen: probeFen, nodes: budgets.screenNodes, newGame: true },
-      { priority: 'urgent', signal },
+      { priority: 'urgent', signal: abortSignal },
     );
 
     let screened = 0;
@@ -349,7 +360,7 @@ export async function generateBalancedDrop(pool, fen, opts = {}) {
         const cmp = compareToBaseline(screenBase, a);
         return { ...cand, screen: a, cmp };
       },
-      { signal },
+      { signal: abortSignal },
     );
 
     const usableScreen = screenResults
@@ -372,7 +383,7 @@ export async function generateBalancedDrop(pool, fen, opts = {}) {
     progress('verify', 0, survivors.length);
     const verifyBase = await pool.analyse(
       { fen: probeFen, nodes: budgets.verifyNodes, multipv: 2, newGame: true },
-      { priority: 'urgent', signal },
+      { priority: 'urgent', signal: abortSignal },
     );
 
     let verified = 0;
@@ -391,7 +402,7 @@ export async function generateBalancedDrop(pool, fen, opts = {}) {
         const cost = error + characterPenalty(character, storyteller.weights);
         return { ...cand, verify: a, cmp, character, error, cost, pkg };
       },
-      { priority: 'urgent', signal },
+      { priority: 'urgent', signal: abortSignal },
     );
 
     const usable = finals.filter(Boolean);
@@ -418,8 +429,11 @@ export async function generateBalancedDrop(pool, fen, opts = {}) {
 
   // ─────────────────────────────── лестница попыток
 
-  const outOfTime = () => Date.now() - t0 > budget.hardMs;
+  // Две проверки времени, и обе нужны. Эта — мягкая: не начинать новый заход,
+  // если времени уже нет. Сигнал выше — жёсткая: оборвать то, что уже идёт.
+  const outOfTime = () => deadline.signal.aborted || Date.now() - t0 > budget.hardMs;
 
+  try {
   // 1-3. До трёх наборов, с ремонтом состава между ними.
   for (let round = 0; round < 3 && !outOfTime(); round++) {
     const pkg = samplePackage(rng, {
@@ -480,6 +494,26 @@ export async function generateBalancedDrop(pool, fen, opts = {}) {
     }
   }
 
+  } catch (err) {
+    // Обрыв по дедлайну — штатный исход, а не сбой: берём лучшее из найденного,
+    // если оно вообще есть, и честно пишем в журнал, что времени не хватило.
+    const aborted = err && (err.code === 'ENGINE_ABORTED' || deadline.signal.aborted);
+    if (!aborted) {
+      clearTimeout(deadlineTimer);
+      throw err;
+    }
+    ladder.push({ step: 'предел времени', result: `поиск оборван на ${Date.now() - t0} мс` });
+  }
+
+  // 5б. Время вышло, но что-то найдено — принимаем с расширенным допуском.
+  if (best) {
+    const widened = Math.round(baseTolerance * 2);
+    if (best.error <= widened) {
+      ladder.push({ step: 'расширение допуска', result: `принято при ±${widened} сп после обрыва по времени` });
+      return finish(best, widened, true);
+    }
+  }
+
   // 6. Отложить.
   return bail('не нашлось расстановки в пределах допуска', {
     bestError: best ? best.error : null,
@@ -487,6 +521,7 @@ export async function generateBalancedDrop(pool, fen, opts = {}) {
   });
 
   function finish(result, toleranceUsed, widened = false) {
+    clearTimeout(deadlineTimer);
     const evalBefore = scoreAt(result.baseline.curve, result.cmp.depth);
     const evalAfter = scoreAt(result.verify.curve, result.cmp.depth);
     return {
