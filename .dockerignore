@@ -1,0 +1,12 @@
+.git
+node_modules
+artifacts
+test
+*.local.json
+.npmrc
+README.md
+REPORT.md
+DEPLOY.md
+render.yaml
+Dockerfile
+.dockerignore

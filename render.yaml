@@ -1,0 +1,18 @@
+services:
+  - type: web
+    name: nostromo-gambit
+    runtime: docker
+    # Поиск десанта упирается в процессор. На free (0.1 CPU) движок работает,
+    # но десант ищется очень долго; starter (0.5 CPU) — разумный минимум.
+    plan: starter
+    region: frankfurt
+    healthCheckPath: /health
+    envVars:
+      - key: APP_PASSWORD
+        sync: false
+      # Stockfish 19: ~200 МБ бинаря общие для всех процессов, плюс 60–75 МБ на
+      # каждый. Один воркер + аналитический движок + Node — около 400 МБ из 512.
+      - key: ENGINE_WORKERS
+        value: "1"
+      - key: COOKIE_SECURE
+        value: "true"

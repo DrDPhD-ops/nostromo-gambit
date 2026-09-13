@@ -18,11 +18,19 @@ import { reapOrphans, killOwnEnginesSync } from '../engine/registry.mjs';
 import { readJsonSafe, CURRENT_JSON } from '../shared/paths.mjs';
 import { SseHub } from './sse.mjs';
 import { createRouter } from './http.mjs';
+import { createPasswordGate } from './auth.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = path.resolve(HERE, '..', '..', 'public');
 const PORT = Number(process.env.PORT || 7777);
 const HOST = process.env.HOST || '127.0.0.1';
+const APP_PASSWORD = process.env.APP_PASSWORD || '';
+
+// os.cpus() в контейнере видит все ядра хоста, а не выделенную квоту, и пул вырос бы
+// до пяти воркеров. Замер Stockfish 19: ~200 МБ бинаря с нейросетями общие для всех
+// процессов, плюс 60–75 МБ собственной памяти на каждый. Пять воркеров и аналитический
+// движок в 512 МБ не помещаются, один воркер — помещается.
+const ENGINE_WORKERS = Number(process.env.ENGINE_WORKERS) || 0;
 
 class App {
   constructor({ engineInfo, useMockEngine = false }) {
@@ -59,7 +67,7 @@ class App {
     this.pool = new EnginePool({
       exePath: this.engineInfo.path,
       args: this.engineInfo.args || [],
-      size: recommendedPoolSize(),
+      size: ENGINE_WORKERS > 0 ? ENGINE_WORKERS : recommendedPoolSize(),
       options: { Threads: 1, Hash: 16 },
     });
     await this.pool.start();
@@ -352,6 +360,15 @@ class App {
 // ─────────────────────────────────────────── запуск
 
 async function main() {
+  const loopback = ['127.0.0.1', 'localhost', '::1'].includes(HOST);
+  if (!loopback && !APP_PASSWORD) {
+    console.error(
+      `Сервер слушает ${HOST}, то есть доступен извне, а APP_PASSWORD не задан.\n` +
+        'Партия одна на всех: без пароля любой зашедший сбросит игру. Задайте APP_PASSWORD.',
+    );
+    process.exit(1);
+  }
+
   const useMock = process.env.ENGINE === 'mock';
   const engineInfo = useMock ? null : readJsonSafe(CURRENT_JSON);
   if (!useMock && !engineInfo) {
@@ -365,9 +382,18 @@ async function main() {
   const app = new App({ engineInfo, useMockEngine: useMock });
   await app.start();
 
-  const server = http.createServer(createRouter({ app, publicDir: PUBLIC_DIR }));
+  const router = createRouter({ app, publicDir: PUBLIC_DIR });
+  const handler = APP_PASSWORD
+    ? createPasswordGate(router, {
+        password: APP_PASSWORD,
+        publicDir: PUBLIC_DIR,
+        ttlDays: Number(process.env.SESSION_TTL_DAYS) || 30,
+        cookieSecure: process.env.COOKIE_SECURE || 'auto',
+      })
+    : router;
+  const server = http.createServer(handler);
   await new Promise((resolve) => server.listen(PORT, HOST, resolve));
-  console.log(`  открыто: http://${HOST}:${PORT}`);
+  console.log(`  открыто: http://${HOST}:${PORT}${APP_PASSWORD ? ' (вход по паролю)' : ''}`);
 
   let shuttingDown = false;
   const shutdown = async (signal) => {

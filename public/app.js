@@ -8,6 +8,18 @@ import { PIECE_LETTER } from './sprites.js';
 
 const $ = (id) => document.getElementById(id);
 
+// На внешнем сервере вход по паролю. Когда сессия истекает, сервер отвечает 401
+// на любой /api/* — уводим на форму входа, а не оставляем молча сломанную доску.
+const rawFetch = window.fetch.bind(window);
+window.fetch = async (...args) => {
+  const res = await rawFetch(...args);
+  if (res.status === 401) {
+    window.location.href = '/login';
+    throw new Error('unauthorized');
+  }
+  return res;
+};
+
 const el = {
   turn: $('turn-line'),
   hold: $('hold-line'),
@@ -78,7 +90,12 @@ function connect() {
   const es = new EventSource('/api/events');
 
   es.onopen = () => setLink(true);
-  es.onerror = () => setLink(false);
+  es.onerror = () => {
+    setLink(false);
+    // EventSource не показывает статус ответа. Закрытый поток после ошибки —
+    // повод проверить сессию: если она истекла, fetch-обёртка уведёт на вход.
+    if (es.readyState === EventSource.CLOSED) refresh().catch(() => {});
+  };
 
   const stateEvents = ['snapshot', 'move', 'settings', 'state'];
   for (const name of stateEvents) {
@@ -603,6 +620,19 @@ $('over-new').onclick = () => {
   el.overlay.classList.remove('on');
   openStartScreen();
 };
+
+// Кнопка выхода нужна только там, где есть вход: локально маршрута нет, будет 404.
+rawFetch('/api/session')
+  .then((r) => {
+    if (!r.ok) return;
+    const btn = $('btn-logout');
+    btn.hidden = false;
+    btn.onclick = async () => {
+      await rawFetch('/api/logout', { method: 'POST' });
+      window.location.href = '/login';
+    };
+  })
+  .catch(() => {});
 
 drawDie(el.die1, 1);
 drawDie(el.die2, 1);
